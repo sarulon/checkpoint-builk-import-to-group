@@ -52,7 +52,9 @@ def add_host_from_file(file=None, sid=None):
                 print(json.dumps(new_host_result))
             else:
                 print(f'{line.strip().rstrip()} already exists!')
-    api_call(args.ip, 443,"publish", {},sid)
+    publish_result = api_call(args.ip, 443,"publish", {},sid)
+    print("publish result: " + json.dumps(publish_result))
+    
 
 def add_group(name=None, members=None, sid=None):
     
@@ -65,6 +67,9 @@ def add_group(name=None, members=None, sid=None):
             'members': member_list 
             }
         api_call(args.ip, 443,'set-group', group ,sid)
+        
+    publish_result = api_call(args.ip, 443,"publish", {},sid)
+    print("publish result: " + json.dumps(publish_result))
 
 def set_group(name=None, members=None, sid=None):
     m = show_group(args.grp_name, sid)
@@ -78,6 +83,8 @@ def set_group(name=None, members=None, sid=None):
                     {"add": member.strip().rstrip() }
                 }
                 api_call(args.ip, 443,'set-group', group ,sid)
+    publish_result = api_call(args.ip, 443,"publish", {},sid)
+    print("publish result: " + json.dumps(publish_result))
 
 def start():
     password = getpass()
@@ -86,12 +93,13 @@ def start():
     new_hosts = input("add new hosts?\n: ")
     if new_hosts.lower() == "yes":
         add_host_from_file(file=args.file, sid=sid)
+        
     if args.cmd == 'set-group':
         set_group(name=args.grp_name, members=args.file, sid=sid)
-    if args.cmd == 'add-group':
+    elif args.cmd == 'add-group':
         set_group(name=args.grp_name, members=args.file, sid=sid)
-    publish_result = api_call(args.ip, 443,"publish", {},sid)
-    print("publish result: " + json.dumps(publish_result))
+    # publish_result = api_call(args.ip, 443,"publish", {},sid)
+    # print("publish result: " + json.dumps(publish_result))
 
     logout_result = api_call(args.ip, 443,"logout", {},sid)
     print("logout result: " + json.dumps(logout_result))	    
