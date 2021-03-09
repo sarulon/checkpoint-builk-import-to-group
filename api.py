@@ -21,6 +21,7 @@ parser.add_argument('--targets', type=str, required=False, help='please enter ta
 parser.add_argument('--name_prefix', type=str, required=False, help='frefix for object name')
 args = parser.parse_args()
 
+
 def api_call(ip_addr, port, command, json_payload, sid=None):
     url = f'https://{ip_addr}:{port}/web_api/{command}'
     if not sid:
@@ -56,40 +57,57 @@ def show_group(name, sid):
     return m, {"locked": "unlocked"}
 
 
+def parse_object_msg(host):
+    if "warnings" in host.keys():
+        print(host["warnings"][0]["message"])
+
+
 def add_host_from_file(file=None, sid=None):
-    with open(file) as file:
-        for line in file.readlines():
-            name = line.strip().rstrip()
-            if args.name_prefix != "":
-                name = f"{args.name_prefix}{line.strip().rstrip()}"
-            new_host_data = {'name':name, 'ip-address': line.strip().rstrip()}
-            host = api_call(args.ip, 443,'show-host', {"name": line.strip().rstrip()} , sid)
-            if host.get("code") == "generic_err_object_not_found":
-            # print(host)
-                new_host_result = api_call(args.ip, 443,'add-host', new_host_data , sid)
-                print(json.dumps(new_host_result))
-            else:
-                print(f'{line.strip().rstrip()} already exists!')
+    # with open(file) as file:
+    for line in file:
+        name = line.strip().rstrip()
+        if len(args.name_prefix) >=1:
+            name = f"{args.name_prefix}{name}"
+        new_host_data = {'name':name, 'ip-address': line.strip().rstrip()}
+        host = api_call(args.ip, 443,'show-host', {"name": name} , sid)
+        if host.get("code") == "generic_err_object_not_found":
+        # print(host)
+            new_host_result = api_call(args.ip, 443,'add-host', new_host_data , sid)
+            parse_object_msg(new_host_result)
+        else:
+            print(f'{line.strip().rstrip()} already exists!')
 
 
 def add_net_from_file(file=None, sid=None):
+    
+    for line in file:
+        line = line.strip().rstrip().split("/")
+        
+        name = line[0]
+        subnet = line[0]
+        prefix = line[1]
+        if len(args.name_prefix) >=1:
+            name = f"{args.name_prefix}{name}"
+        new_host_data = {'name':name, 'subnet': subnet, 'mask-length': prefix}
+        host = api_call(args.ip, 443,'show-network', {"name": name} , sid)
+        if host.get("code") == "generic_err_object_not_found":
+        # print(host)
+            new_host_result = api_call(args.ip, 443,'add-network', new_host_data , sid)
+            parse_object_msg(new_host_result)
+            # print(json.dumps(new_host_result))
+        else:
+            print(f'{line.strip().rstrip()} already exists!')    
+        
+
+
+
+def add_net_obj(file, sid):
     with open(file) as file:
         for line in file.readlines():
-            line = line.strip().rstrip().split("/")
-            print(line)
-            name = line[0]
-            subnet = line[0]
-            prefix = line[1]
-            if args.name_prefix != "":
-                name = f"{args.name_prefix}{name}"
-            new_host_data = {'name':name, 'subnet': subnet, 'mask-length': prefix}
-            host = api_call(args.ip, 443,'show-network', {"name": name} , sid)
-            if host.get("code") == "generic_err_object_not_found":
-            # print(host)
-                new_host_result = api_call(args.ip, 443,'add-network', new_host_data , sid)
-                print(json.dumps(new_host_result))
+            if "/" in line:
+                add_net_from_file([line], sid)
             else:
-                print(f'{line[0]} already exists!')
+                add_host_from_file([line], sid)
 
 
 def add_group(name=None, members=None, sid=None):
@@ -197,18 +215,16 @@ def switch_policy(q, sid):
     
 
 def start():
+    global sid
     password = getpass()
     login_data = login(args.user, password)
     sid = login_data["sid"]
     uid = login_data["uid"]
     group, locked = show_group(args.grp_name, sid)
     
-    new_hosts = input("add new hosts?\n: ")
-    new_networks = input("add new networks?\n: ")
+    new_hosts = input("add new network objects?\n: ")
     if new_hosts.lower() == "yes" or new_hosts.lower() == "y":
-        add_host_from_file(file=args.file, sid=sid)
-    if new_networks.lower() == "yes" or new_networks.lower() == "y":
-        add_net_from_file(file=args.file, sid=sid)
+        add_net_obj(args.file, sid)
     if locked.get('locked') == "unlocked":
         if args.cmd == 'set-group':
             set_group(name=args.grp_name, members=args.file, sid=sid)
@@ -235,4 +251,7 @@ def start():
     print(f'Logged out {api_call(args.ip, 443,"logout", {},sid)["message"]}')
     	    
 
-start()
+try:
+    start()
+except KeyboardInterrupt:
+    print(f'Logged out {api_call(args.ip, 443,"logout", {},sid)["message"]}')
