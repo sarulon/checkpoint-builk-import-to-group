@@ -18,6 +18,7 @@ parser.add_argument('--cmd', type=str, help='add-group or set-group',
 parser.add_argument('--file', required=True, type=str, help='read from any file containing ips 1 ip in line')
 parser.add_argument('--policy', type=str, required=False, help='please enter policy name')
 parser.add_argument('--targets', type=str, required=False, help='please enter target to install policy on, seperated by [,]: fw, fw2 ')
+parser.add_argument('--name_prefix', type=str, required=False, help='frefix for object name')
 args = parser.parse_args()
 
 def api_call(ip_addr, port, command, json_payload, sid=None):
@@ -37,23 +38,31 @@ def login(user,password,enter_last_published_session=False):
 
 
 def show_group(name, sid):
-    group = api_call(args.ip, 443,'show-group', {'name': name} , sid)
-    lock_status = {
-        "locked": group['meta-info']['lock'], 
-        "locking-admin": group['meta-info'].get("locking-admin"), 
-        "locking-session-id": group['meta-info'].get("locking-session-id")
-        }
-    print(lock_status)
     m = []
-    for i in group['members']:
-        m.append(i['name'])
-    return m, lock_status
+    group = api_call(args.ip, 443,'show-group', {'name': name} , sid)
+    if 'code' in group.keys() and group['code'] != 'generic_err_object_not_found':
+        lock_status = {
+            "locked": group['meta-info']['lock'], 
+            "locking-admin": group['meta-info'].get("locking-admin"), 
+            "locking-session-id": group['meta-info'].get("locking-session-id")
+            }
+        print(lock_status)
+    
+        
+        
+        for i in group['members']:
+            m.append(i['name'])
+        return m, lock_status
+    return m, {"locked": "unlocked"}
 
 
 def add_host_from_file(file=None, sid=None):
     with open(file) as file:
         for line in file.readlines():
-            new_host_data = {'name':line.strip().rstrip(), 'ip-address': line.strip().rstrip()}
+            name = line.strip().rstrip()
+            if args.name_prefix != "":
+                name = f"{args.name_prefix}{line.strip().rstrip()}"
+            new_host_data = {'name':name, 'ip-address': line.strip().rstrip()}
             host = api_call(args.ip, 443,'show-host', {"name": line.strip().rstrip()} , sid)
             if host.get("code") == "generic_err_object_not_found":
             # print(host)
@@ -62,18 +71,41 @@ def add_host_from_file(file=None, sid=None):
             else:
                 print(f'{line.strip().rstrip()} already exists!')
 
-    
+
+def add_net_from_file(file=None, sid=None):
+    with open(file) as file:
+        for line in file.readlines():
+            line = line.strip().rstrip().split("/")
+            print(line)
+            name = line[0]
+            subnet = line[0]
+            prefix = line[1]
+            if args.name_prefix != "":
+                name = f"{args.name_prefix}{name}"
+            new_host_data = {'name':name, 'subnet': subnet, 'mask-length': prefix}
+            host = api_call(args.ip, 443,'show-network', {"name": name} , sid)
+            if host.get("code") == "generic_err_object_not_found":
+            # print(host)
+                new_host_result = api_call(args.ip, 443,'add-network', new_host_data , sid)
+                print(json.dumps(new_host_result))
+            else:
+                print(f'{line[0]} already exists!')
+
 
 def add_group(name=None, members=None, sid=None):
     with open(members) as file:
         member_list = []
         for member in file.readlines():
-            member_list.append(member.strip().rstrip())
+            member = member.strip().rstrip()
+            if args.name_prefix:
+                member = f"{args.name_prefix}{member}"
+            member_list.append(member)
         group = {
             'name': name, 
             'members': member_list 
             }
-        a = api_call(args.ip, 443,'set-group', group ,sid)
+        api_call(args.ip, 443,'add-group', group ,sid)
+        
     publish_result = api_call(args.ip, 443,"publish", {},sid)
     print("publish result: " + json.dumps(publish_result))
     # api_call(args.ip, 443,"logout", {},sid)
@@ -82,7 +114,12 @@ def set_group(name=None, members=None, sid=None):
     m = show_group(args.grp_name, sid)
     with open(members) as file:
         for member in file.readlines():
-            if member.strip().rstrip() not in m:
+            if "/" in member:
+                member = member.strip().rstrip().split("/")[0]
+            member = member.strip().rstrip()
+            if args.name_prefix:
+                member = f"{args.name_prefix}{member}"
+            if member not in m:
             # member_list.append(member.strip().rstrip())
                 group = {
                     'name': name, 
@@ -167,13 +204,16 @@ def start():
     group, locked = show_group(args.grp_name, sid)
     
     new_hosts = input("add new hosts?\n: ")
-    if new_hosts.lower() == "yes":
+    new_networks = input("add new networks?\n: ")
+    if new_hosts.lower() == "yes" or new_hosts.lower() == "y":
         add_host_from_file(file=args.file, sid=sid)
+    if new_networks.lower() == "yes" or new_networks.lower() == "y":
+        add_net_from_file(file=args.file, sid=sid)
     if locked.get('locked') == "unlocked":
         if args.cmd == 'set-group':
             set_group(name=args.grp_name, members=args.file, sid=sid)
         elif args.cmd == 'add-group':
-            set_group(name=args.grp_name, members=args.file, sid=sid)
+            add_group(name=args.grp_name, members=args.file, sid=sid)
 
         publish_result = api_call(args.ip, 443,"publish", {},sid)
         print("publish result: " + json.dumps(publish_result))
@@ -187,8 +227,10 @@ def start():
         f'locks: {session.get("locks")}\n',
         f'publish-time: {session.get("publish-time")}\n',
         f'state: {session.get("state")}')
-    q = input("choose from options:\n\t1. verify policy\n\t2. install policy\n\t3. verify and install\nanything else will logout from this session:\n: ")
-    switch_policy(q, sid)
+    
+    if args.policy:
+        q = input("choose from options:\n\t1. verify policy\n\t2. install policy\n\t3. verify and install\nanything else will logout from this session:\n: ")
+        switch_policy(q, sid)
     
     print(f'Logged out {api_call(args.ip, 443,"logout", {},sid)["message"]}')
     	    
