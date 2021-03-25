@@ -5,7 +5,7 @@ from getpass import getpass
 from requests.sessions import session
 import urllib3
 import time
-
+from gui.gui import Ui_MainWindow
 
 urllib3.disable_warnings()
 
