@@ -62,7 +62,7 @@ class Application(Ui_MainWindow, QMainWindow):
 
         try:
             path, _ = QFileDialog.getOpenFileName(self, 'Open csv', QDir.rootPath(), '*.csv, *.txt')
-            self.file = open(path).readlines()
+            self.file = path
         except Exception as error:
             print(error)
 
@@ -124,7 +124,7 @@ class Application(Ui_MainWindow, QMainWindow):
                 self.parse_object_msg(new_host_result)
                 # print(json.dumps(new_host_result))
             else:
-                print(f'{line.strip().rstrip()} already exists!')    
+                print(f'{subnet} already exists!')    
             
 
 
